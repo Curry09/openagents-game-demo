@@ -1,0 +1,57 @@
+# OpenAgents 声明式配置 (Spec-0064 / Spec-0067)
+# ============================================================================
+# 本文件由 `oa init` 从包内模板自动生成(Spec-0067)。直接按需删改即可；
+# 想用包内最新模板重置，跑 `oa init --force`。
+#
+# 「用哪些 agent + 每道闸归谁把关」的单一真源。
+# 整份可省——文件不存在或为空则全回落内建默认(全自动、全 agent、单仓、间隔 60s)，
+# 不写 YAML 的用户零感知。下面每个键都可删；删掉即用内建默认。
+# 生成物只是声明式默认——运行时 `oa vigil --skip ci` / `--hold merge` / `--base` 仍可单次覆盖它。
+# 加载/校验实现见 openagents/utils/agent_config.py。
+# ============================================================================
+
+version: 1
+
+# 每个角色接哪个后端(同项目可混接 Claude Code / Codex / nexau)。
+# 缺省角色回落 claude_code。可用角色：triager / drafter / implementer / reviewer / replier / deliver。
+agents:
+  implementer: { backend: claude_code }
+  reviewer:    { backend: claude_code }
+
+# 每个可配阶段归谁把关，三态：
+#   agent  自动化把关(红了自动打回 implementer)
+#   human  停在此闸打 needs-human、挂起等人
+#   skip   不设此闸(当 PASS 放行)
+# 注意每闸合法取值不同(见右侧注释)——conflict/merge 必须有人或自动化把关、不可 skip；
+# rfc 只 agent 或 skip(不存在 human 起草)。
+stages:
+  triage:   agent      # 准入门控        取值: agent / human / skip
+  rfc:      agent      # RFC 起草        取值: agent / skip (skip 会告警——撞理念4「先改 RFC 再改代码」)
+  conflict: agent      # 解冲突          取值: agent / human (不可 skip)
+  ci:       agent      # 等 CI 全绿      取值: agent / human / skip
+  e2e:      agent      # 端到端取证      取值: agent / human / skip
+  review:   agent      # 代码评审        取值: agent / human / skip
+  merge:    agent      # 合并            取值: agent / human (不可 skip；merge:human 则合并前停下等人点合)
+
+# 顶层发版策略：manual(人决定何时发版，默认最安全) / auto。
+release: manual
+
+# 单仓库默认(多仓时被每仓 override 覆盖)。
+defaults:
+  interval: 60         # 守夜轮询间隔(秒)
+  base: main           # 目标分支
+  labels: [openagents] # issue 发现标签
+
+# 多仓库统管：每仓一子进程隔离(gh/git 绑进程 cwd)。单仓时整段可省(默认守当前目录 path=.)。
+repos:
+  - path: .
+    # 可选每仓覆盖：name / base / interval / labels / stages(三级合并)
+    # stages:
+    #   review: human
+
+# ── 约束(违反会直接报错) ────────────────────────────────────────────────
+# 1) 不许零闸：review: skip + merge: agent 会让未审代码自动盲合进 main——报错。
+#    要么开 review、要么把 merge 交给人(merge: human)。
+# 2) 硬闸名进不了 stages：head-advanced / evidence-stamp / round-cap 是确定性硬闸、恒机器把关；
+#    implement / deliver 恒派 agent。写进 stages 均 reject。
+# 3) 三态 skip 在感知层归一：ci:skip→CI 当 success，e2e:skip→证据戳当前 head，review:skip→裁决记 APPROVED@head。
