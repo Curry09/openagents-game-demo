@@ -1,0 +1,53 @@
+Spec-0001 · real-app evidence for the curses entry `snake.py`
+=============================================================
+
+The curses TUI needs a real tty, so it cannot be driven by headless pytest.
+Instead it was driven inside a pseudo-terminal (Python `pty.fork` + `execvp`
+of `python snake.py`, TERM=xterm) that injects real keystrokes and captures
+the terminal output. Trigger sequence (times are seconds after launch):
+
+  0.3s  arrow-Up (ESC [ A)     0.8s  arrow-Right (ESC [ C)
+  0.5s  'w' (WASD up)          1.1s  'd' (WASD right)
+  1.4s..2.4s  repeated arrow-Up  -> steer the head into the top wall
+
+Below is the captured screen (ANSI escapes stripped). It shows the bordered
+grid (`#`), the snake head `O` / body `o`, the food `*`, the live score line,
+and — after the head hits the wall — the Game Over screen with the final score.
+Both arrow keys and WASD moved the snake (head travelled up then right),
+demonstrating the dual key mapping and the collision/end-of-game path.
+
+--- captured screen (stripped, tail) ---
+##########################
+##
+##
+##
+##
+##
+##
+#*#
+#ooO#
+##
+##
+##
+##
+##
+##
+##########################
+Score: 0   (arrows/WASD, q quits)
+ ...
+  Game Over
+
+  Final score: 0
+
+  Press any key to exit.
+--- markers present in capture ---
+'Score:': FOUND   'Game Over': FOUND   'Final score': FOUND
+'O' (head): FOUND   '*' (food): FOUND   '#' (border): FOUND
+
+Non-tty invocation (stdin not a tty) — graceful message, no traceback:
+  $ echo "" | python snake.py
+  snake.py needs an interactive terminal to run: nocbreak() returned ERR
+
+Deterministic scoring/growth/collision rules are covered separately and
+exhaustively by tests/test_snake_game.py (13 passing, injected seed).
+Reproduce the pty drive with: python docs/evidence/spec-0001/drive_pty.py
